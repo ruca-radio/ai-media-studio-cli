@@ -80,7 +80,16 @@ app = typer.Typer(
     rich_markup_mode="rich",
 )
 console = Console()
-client = genai.Client()
+
+# Lazy client initialization to avoid requiring credentials at import time
+_client = None
+
+def get_client():
+    """Get or create the GenAI client"""
+    global _client
+    if _client is None:
+        _client = genai.Client()
+    return _client
 
 
 # Dynamic model choices
@@ -464,6 +473,7 @@ def generate(
         if extend_video_path:
             api_params["video"] = create_video_object(extend_video_path)
 
+        client = get_client()
         operation = client.models.generate_videos(**api_params)
 
         # Handle operation ID - it might be a string or an object with a name attribute
@@ -492,6 +502,7 @@ def generate(
                     time.sleep(5)
                     try:
                         # Refresh operation status using the correct API method
+                        client = get_client()
                         operation = client.operations.get(operation)
                     except Exception as e:
                         console.print(
