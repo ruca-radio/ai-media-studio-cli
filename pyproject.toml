@@ -7,7 +7,7 @@ name = "ai-media-studio-cli"
 version = "2.0.0"
 description = "AI Media Studio CLI - Professional Multi-Modal AI Media Generation Tool by Abdulrahman Elsmmany"
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.12"
 dependencies = [
     "aiohttp[speedups]>=3.12.15",
     "google-cloud-storage>=3.2.0",
@@ -18,10 +18,14 @@ dependencies = [
     "python-dotenv>=1.1.1",
     "rich>=14.1.0",
     "typer>=0.16.0",
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
+    "python-multipart>=0.0.12",
 ]
 
 [project.scripts]
 ai-studio = "ai_media_studio_cli.main:app"
+ai-studio-web = "ai_media_studio_cli.web_app:start_server"
 
 [tool.uv]
 package = true
