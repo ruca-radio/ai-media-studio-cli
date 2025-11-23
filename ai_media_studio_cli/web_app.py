@@ -6,6 +6,7 @@ import asyncio
 import os
 import time
 import uuid
+import threading
 from pathlib import Path
 from typing import Optional, Dict, List, Any
 from datetime import datetime
@@ -35,9 +36,11 @@ app = FastAPI(
 )
 
 # CORS middleware to allow frontend requests
+# NOTE: In production, restrict origins to specific domains
+# e.g., allow_origins=["https://yourdomain.com"]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"],  # TODO: Restrict in production
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -53,8 +56,34 @@ def get_client():
         _client = genai.Client()
     return _client
 
-# In-memory storage for jobs (in production, use Redis or a database)
+# In-memory storage for jobs with thread-safe access
+# NOTE: In production, use Redis or a database for:
+# - Persistence across server restarts
+# - Scalability across multiple workers
+# TODO: Implement proper storage abstraction
 jobs: Dict[str, Dict[str, Any]] = {}
+jobs_lock = threading.Lock()
+
+def get_job(job_id: str) -> Optional[Dict[str, Any]]:
+    """Thread-safe job retrieval"""
+    with jobs_lock:
+        return jobs.get(job_id)
+
+def set_job(job_id: str, job_data: Dict[str, Any]) -> None:
+    """Thread-safe job storage"""
+    with jobs_lock:
+        jobs[job_id] = job_data
+
+def update_job(job_id: str, updates: Dict[str, Any]) -> None:
+    """Thread-safe job update"""
+    with jobs_lock:
+        if job_id in jobs:
+            jobs[job_id].update(updates)
+
+def list_all_jobs() -> List[Dict[str, Any]]:
+    """Thread-safe job listing"""
+    with jobs_lock:
+        return list(jobs.values())
 
 
 class AspectRatio(str, Enum):
@@ -130,9 +159,11 @@ async def generate_video_task(job_id: str, request: GenerateVideoRequest):
     """Background task for video generation"""
     try:
         # Update job status
-        jobs[job_id]["status"] = JobStatus.processing
-        jobs[job_id]["message"] = "Initializing video generation..."
-        jobs[job_id]["updated_at"] = datetime.now().isoformat()
+        update_job(job_id, {
+            "status": JobStatus.processing,
+            "message": "Initializing video generation...",
+            "updated_at": datetime.now().isoformat()
+        })
 
         # Validate model
         model_config = get_model_config(request.model)
@@ -156,9 +187,11 @@ async def generate_video_task(job_id: str, request: GenerateVideoRequest):
         duration_seconds = corrected_options.get("duration_seconds", request.duration_seconds)
 
         # Update progress
-        jobs[job_id]["progress"] = 10
-        jobs[job_id]["message"] = "Creating generation configuration..."
-        jobs[job_id]["updated_at"] = datetime.now().isoformat()
+        update_job(job_id, {
+            "progress": 10,
+            "message": "Creating generation configuration...",
+            "updated_at": datetime.now().isoformat()
+        })
 
         # Create configuration
         config = GenerateVideosConfig(
@@ -170,9 +203,11 @@ async def generate_video_task(job_id: str, request: GenerateVideoRequest):
         )
 
         # Start video generation
-        jobs[job_id]["progress"] = 20
-        jobs[job_id]["message"] = "Starting video generation..."
-        jobs[job_id]["updated_at"] = datetime.now().isoformat()
+        update_job(job_id, {
+            "progress": 20,
+            "message": "Starting video generation...",
+            "updated_at": datetime.now().isoformat()
+        })
 
         client = get_client()
         operation = client.models.generate_videos(
@@ -182,9 +217,11 @@ async def generate_video_task(job_id: str, request: GenerateVideoRequest):
         )
 
         # Poll for completion
-        jobs[job_id]["progress"] = 30
-        jobs[job_id]["message"] = "Generating video (this may take 2-3 minutes)..."
-        jobs[job_id]["updated_at"] = datetime.now().isoformat()
+        update_job(job_id, {
+            "progress": 30,
+            "message": "Generating video (this may take 2-3 minutes)...",
+            "updated_at": datetime.now().isoformat()
+        })
 
         start_time = time.time()
         while not getattr(operation, "done", False):
@@ -194,15 +231,21 @@ async def generate_video_task(job_id: str, request: GenerateVideoRequest):
                 client = get_client()
                 operation = client.operations.get(operation)
             except Exception as e:
-                # Continue waiting on refresh errors
+                # Log the error but continue polling
+                # Common errors: network issues, temporary API unavailability
+                import logging
+                logging.warning(f"Error refreshing operation status: {e}")
+                # Continue waiting without breaking the loop
                 pass
 
             # Update progress
             elapsed = time.time() - start_time
             estimated_progress = min(95, 30 + (elapsed / 120) * 65)
-            jobs[job_id]["progress"] = int(estimated_progress)
-            jobs[job_id]["message"] = f"Processing... ({int(elapsed)}s elapsed)"
-            jobs[job_id]["updated_at"] = datetime.now().isoformat()
+            update_job(job_id, {
+                "progress": int(estimated_progress),
+                "message": f"Processing... ({int(elapsed)}s elapsed)",
+                "updated_at": datetime.now().isoformat()
+            })
 
             # Timeout after 10 minutes
             if elapsed > 600:
@@ -215,9 +258,11 @@ async def generate_video_task(job_id: str, request: GenerateVideoRequest):
                 video_uris = [video.video.uri for video in result.generated_videos]
                 
                 # Update job with videos
-                jobs[job_id]["progress"] = 95
-                jobs[job_id]["message"] = "Downloading videos..."
-                jobs[job_id]["updated_at"] = datetime.now().isoformat()
+                update_job(job_id, {
+                    "progress": 95,
+                    "message": "Downloading videos...",
+                    "updated_at": datetime.now().isoformat()
+                })
 
                 # Download videos
                 download_folder = "downloaded_media"
@@ -235,11 +280,13 @@ async def generate_video_task(job_id: str, request: GenerateVideoRequest):
                     video_paths.append(f"/media/{rel_path}")
 
                 # Complete the job
-                jobs[job_id]["status"] = JobStatus.completed
-                jobs[job_id]["progress"] = 100
-                jobs[job_id]["message"] = f"Successfully generated {len(video_paths)} video(s)"
-                jobs[job_id]["videos"] = video_paths
-                jobs[job_id]["updated_at"] = datetime.now().isoformat()
+                update_job(job_id, {
+                    "status": JobStatus.completed,
+                    "progress": 100,
+                    "message": f"Successfully generated {len(video_paths)} video(s)",
+                    "videos": video_paths,
+                    "updated_at": datetime.now().isoformat()
+                })
             else:
                 raise ValueError("No videos were generated")
         else:
@@ -247,10 +294,12 @@ async def generate_video_task(job_id: str, request: GenerateVideoRequest):
             raise ValueError(str(error_msg))
 
     except Exception as e:
-        jobs[job_id]["status"] = JobStatus.failed
-        jobs[job_id]["error"] = str(e)
-        jobs[job_id]["message"] = f"Error: {str(e)}"
-        jobs[job_id]["updated_at"] = datetime.now().isoformat()
+        update_job(job_id, {
+            "status": JobStatus.failed,
+            "error": str(e),
+            "message": f"Error: {str(e)}",
+            "updated_at": datetime.now().isoformat()
+        })
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -298,7 +347,7 @@ async def generate_video(request: GenerateVideoRequest, background_tasks: Backgr
     job_id = str(uuid.uuid4())
     now = datetime.now().isoformat()
     
-    jobs[job_id] = {
+    job_data = {
         "job_id": job_id,
         "status": JobStatus.queued,
         "progress": 0,
@@ -309,26 +358,28 @@ async def generate_video(request: GenerateVideoRequest, background_tasks: Backgr
         "updated_at": now,
         "request": request.model_dump()
     }
+    set_job(job_id, job_data)
 
     # Start background task
     background_tasks.add_task(generate_video_task, job_id, request)
 
-    return JobResponse(**jobs[job_id])
+    return JobResponse(**job_data)
 
 
 @app.get("/api/jobs/{job_id}", response_model=JobResponse)
 async def get_job_status(job_id: str):
     """Get the status of a video generation job"""
-    if job_id not in jobs:
+    job = get_job(job_id)
+    if not job:
         raise HTTPException(status_code=404, detail="Job not found")
     
-    return JobResponse(**jobs[job_id])
+    return JobResponse(**job)
 
 
 @app.get("/api/jobs", response_model=List[JobResponse])
 async def list_jobs():
     """List all jobs"""
-    return [JobResponse(**job) for job in jobs.values()]
+    return [JobResponse(**job) for job in list_all_jobs()]
 
 
 @app.get("/media/{filepath:path}")
