@@ -8,7 +8,7 @@
 *Generate videos, images, and music with Google's AI models using simple text prompts*
 
 [![Version](https://img.shields.io/badge/version-2.0.0-4ECDC4?style=for-the-badge)](https://github.com/Abdulrahman-Elsmmany/ai-media-studio-cli)
-[![Python](https://img.shields.io/badge/python-3.13+-45B7D1?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
+[![Python](https://img.shields.io/badge/python-3.12+-45B7D1?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-MIT-96CEB4?style=for-the-badge)](LICENSE)
 [![Developer](https://img.shields.io/badge/Developer-Abdulrahman%20Elsmmany-FF6B6B?style=for-the-badge&logo=github&logoColor=white)](https://github.com/Abdulrahman-Elsmmany)
 
@@ -18,6 +18,33 @@
 ![Professional](https://img.shields.io/badge/⭐-Professional%20Grade-32CD32?style=for-the-badge)
 
 </div>
+
+---
+
+## 🌐 **NEW: Web UI Available!**
+
+Experience AI Media Studio through a beautiful web interface!
+
+![Web UI Screenshot](https://github.com/user-attachments/assets/766c8ea3-b7cb-45c7-b3f7-a528fc67d117)
+
+### 🚀 **Launch the Web Interface**
+
+```bash
+# Start the web server
+ai-studio-web
+```
+
+Then open your browser to **http://localhost:8080**
+
+**Web UI Features:**
+- 🎨 **Modern Design** - Beautiful, intuitive interface
+- 📊 **Real-time Progress** - Watch generation progress live
+- 🎬 **Video Preview** - View videos directly in browser
+- ⬇️ **One-Click Download** - Easy video downloads
+- 🔌 **RESTful API** - Integrate with your apps
+- 📱 **Responsive** - Works on desktop and mobile
+
+[📖 Read the full Web UI documentation](WEB_UI_README.md)
 
 ---
 
